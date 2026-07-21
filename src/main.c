@@ -2,8 +2,8 @@
 #include <argp.h> 
 #include <stdbool.h>
 #include <stdlib.h>
-#include "analyzer.h"
-#include "linearizer.h"
+#include "header/analyzer.h"
+#include "header/linearizer.h"
 
 struct user_input{
     bool input_file_selected;
@@ -44,22 +44,22 @@ static void write_statistics(FILE* out_stream, struct statistics stat)
     fprintf(out_stream, "TOTAL VARIABLE ANALYZED: %d\n", stat.variable_analyzed);
     fprintf(out_stream, "TOTAL ERROR FOUND: %d\n", stat.error_found);
     fprintf(out_stream, "TOTAL UNUSED VARIABLE: %d\n", stat.variable_unused);
-    fprintf(out_stream, "TOTATL UNCORRECT VARIABLE NAME: %d\n", stat.variable_name_uncorrect);
+    fprintf(out_stream, "TOTAL UNCORRECT VARIABLE NAME: %d\n", stat.variable_name_uncorrect);
     fprintf(out_stream, "TOTAL UNCORRECT TYPE NAME: %d\n", stat.variable_type_uncorrect);
 
-    fprintf(out_stream, "ERROR LIST:\n");
+    fprintf(out_stream, (stat.error_list_size) ? "ERROR LIST:\n" : "ERROR LIST: empty\n");
 
     for(int i = 0; i < stat.error_list_size; i++)
     {
         fprintf(out_stream, (stat.error_list[i].type == TYPE_ERROR) ? "TYPE ERROR, " : "NAME_ERROR, ");
         fprintf(out_stream, "%s, ", stat.error_list[i].lexeme);
-        fprintf(out_stream, (i == stat.error_list_size - 1) ? "%d\n" : "%d / ", stat.error_list[i].line); 
+        fprintf(out_stream, (i == stat.error_list_size - 1) ? "%d\n" : "%d | ", stat.error_list[i].line); 
     }
 
-    fprintf(out_stream, "UNUSED VARIABLE LIST:\n");
+    fprintf(out_stream, (stat.variable_unused_list_size) ? "UNUSED VARIABLE LIST:\n" : "UNUSED VARIABLE LIST: empty\n");
 
     for(int i = 0; i < stat.variable_unused_list_size; i++)
-        fprintf(out_stream, (i == stat.variable_unused_list_size - 1) ? "%s\n" : "%s, ", stat.variable_unused_list[i]);
+        fprintf(out_stream, (i == stat.variable_unused_list_size - 1) ? "%s\n" : "%s | ", stat.variable_unused_list[i]);
 }
 
 int main(int argc, char** argv)
@@ -104,7 +104,7 @@ int main(int argc, char** argv)
         perror("Error during file operation");
         return EXIT_FAILURE;
     }
-
+    
     struct statistics stat = analyze(linearization);
 
     FILE* out_stream = stdout;
@@ -125,7 +125,7 @@ int main(int argc, char** argv)
     if(user_in.verbose_selected && out_stream != stdout)
         write_statistics(stdout, stat);
 
-    if(fclose(out_stream) && !user_in.verbose_selected)
+    if(out_stream != stdout && fclose(out_stream))
     {
         perror("Error to close the output file; forced output to stdout");
         write_statistics(stdout, stat);
