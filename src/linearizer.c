@@ -1,5 +1,6 @@
 #include "header/linearizer.h"
-#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 char** linearize(FILE* fp)
 {
@@ -15,10 +16,8 @@ char** linearize(FILE* fp)
     while ((c = fgetc(fp) != EOF))
     {
         if (ferror(fp))
-        {
-            printf("An error has been found. Function linearize terminated\n");
             return NULL;
-        }
+
         // trovo i caratteri di spazio, a capo e ; per dire che il token è terminato
         if (c == ' ' || c == '\n' || c == '\t' || c == ';') 
         {
@@ -44,4 +43,12 @@ char** linearize(FILE* fp)
         }
     }
     return Token;
+}
+
+void free_linearization(char** linearization)
+{
+    for(int i = 0; linearization[i] != NULL; i++)
+        free(linearization[i]);
+
+    free(linearization);
 }
