@@ -25,5 +25,6 @@ struct statistics{
 };
 
 struct statistics analyze(char**);
+void free_stat(struct statistics*);
 
 #endif 

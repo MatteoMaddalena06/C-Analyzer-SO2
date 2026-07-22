@@ -4,5 +4,6 @@
 #include <stdio.h>
 
 char** linearize(FILE*);
+void free_linearization(char**);
 
 #endif

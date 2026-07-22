@@ -106,6 +106,7 @@ int main(int argc, char** argv)
     }
     
     struct statistics stat = analyze(linearization);
+    free_linearization(linearization);
 
     FILE* out_stream = stdout;
 
@@ -130,6 +131,8 @@ int main(int argc, char** argv)
         perror("Error to close the output file; forced output to stdout");
         write_statistics(stdout, stat);
     }
+
+    free_stat(&stat);
     
     return EXIT_SUCCESS;
 }
