@@ -1,101 +1,134 @@
 #include "header/linearizer.h"
+#include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
-char** linearize(FILE* fp)
+enum skip_type {
+    NEWLINE_END,
+    COMMENT_END,
+    STRING_END,
+    CHAR_END
+};
+
+struct skip {
+    bool skip_selected;
+    enum skip_type type;
+    unsigned int backslash_number;
+};
+
+static void set_skip(char curr_char, char succ_char, char prev_char, struct skip* skip)
 {
-    //array che contiene gli type e le keywords
-    char TypeDict[6] = {"int", "float", "double","char","bool","void"};
-    char UserTypeDict[3]={"union","struct","enum"};
-
-    //creo un array di stringhe dinamiche con malloc
-    int cap = 8;
-    int ind=0;
-    char** Token = malloc(cap * sizeof(char*));
-
-    int c;
-    char buffer[100];
-    int buffInd = 0;
-    
-    bool skip = false;
-    while ((c = fgetc(fp) != EOF))
+    if(!skip->skip_selected)
     {
-        if (ferror(fp))
+        if(curr_char == '#' || (curr_char == '/' && succ_char == '/'))
         {
-            return NULL;
+            skip->skip_selected = true;
+            skip->type = NEWLINE_END;
         }
-        //controlla se il carattere dopo è [ oppure = allora salto finche non incontro un " ","\n","\t",";"
-        if(c == '[' || c == '=')
+        else if(curr_char == '/' && succ_char == '*')
         {
-            skip = true;
-            continue;
+            skip->skip_selected = true;
+            skip->type = COMMENT_END;
         }
-        if(skip == true)
+        else if(curr_char == '"')
         {
-            continue;
+            skip->skip_selected = true;
+            skip->backslash_number = 0;
+            skip->type = STRING_END;
         }
-        // trovo i caratteri di spazio, a capo e ; per dire che il token è terminato
-        if (c == ' ' || c == '\n' || c == '\t' || c == ';') 
+        else if(curr_char == '\'')
         {
-            skip = false;
-            //trovato il carattere '\n',' ', '\t' o ';' controllo se l'indice è uguale alla grandezza(cap) attuale dell'array Token
-            // se si allora aumento la grandezza(cap) dell'array Token con realloc. Aggiungo sempre la nuova stringa in Token
-            if(buffInd >0)
-            {
-                buffer[buffInd] = '\0';
-                if (ind == cap)
-                {
-                    cap *=2;
-                    Token = realloc(Token, cap*sizeof(char*));
-                }
-                //controllo che il token sia un tipo e metto dentro l'array
-                if(TypePresent(buffer,TypeDict,6) == true)
-                {
-                    Token[ind] = strdup(buffer);
-                    ind++;
-                }
-                //controllo che il token sia un UserTypeDict e metto dentro l'array
-                if(TypePresent(buffer,UserTypeDict,3) == true)
-                {
-                    Token[ind] = strdup(buffer);
-                    ind++;
-                }
-                //controlla se il token precedente era di un userType or Type, se si allora il buffer è una variabile e viene messo
-                //nell'array
-                if(TypePresent(Token[ind-1],TypeDict,6)==true || TypePresent(Token[ind-1],UserTypeDict,3)==true)
-                {
-                    Token[ind] = strdup(buffer);
-                    ind++;  
-                }
-                buffInd =0;
-            }
-        }
-        // continuo a creare il token finche non c'è spazio, a capo o ;
-        else
-        {
-            buffer[buffInd++] = c;
+            skip->skip_selected = true;
+            skip->backslash_number = 0;
+            skip->type = CHAR_END;
         }
     }
-    return Token;
+    else 
+    {
+        if((skip->type == NEWLINE_END && curr_char == '\n') || (skip->type == COMMENT_END && curr_char == '/' && prev_char == '*') || \
+           (skip->type == STRING_END && curr_char == '"' && skip->backslash_number % 2 == 0) || \
+           (skip->type == CHAR_END && curr_char == '\'' && skip->backslash_number % 2 == 0))
+            skip->skip_selected = false;
+
+        if(skip->type == STRING_END || skip->type == CHAR_END)
+            skip->backslash_number = (curr_char == '\\') ? skip->backslash_number + 1 : 0;
+    }
 }
 
+static bool skip_end_delimiter(char curr_char, char prev_char)
+{
+    switch(curr_char)
+    {
+        case '"':  return true;
+        case '\'': return true; 
+        case '/':  return prev_char == '*';
+    }
+
+    return false;
+} 
+
+char** linearize(FILE* in_stream)
+{
+    char curr_char, succ_char, prev_char = 0;
+
+    if((curr_char = fgetc(in_stream)) == EOF)
+        return NULL;
+
+    if((succ_char = fgetc(in_stream)) == EOF && ferror(in_stream))
+        return NULL;
+
+    int statement_head = 0, statement_size = 1;
+    char* statement = (char*)malloc(sizeof(char));
+
+    struct skip skip = {false};
+    bool skip_space = false;
+
+    do
+    {
+        set_skip(curr_char, succ_char, prev_char, &skip);
+
+        if(skip.skip_selected || skip_end_delimiter(curr_char, prev_char) || \
+            (isspace(curr_char) && curr_char != ' ') || (curr_char == ' ' && skip_space))
+        {
+            prev_char = curr_char;
+            curr_char = succ_char;
+            continue; 
+        }  
+
+        skip_space = (curr_char == ' ');
+
+        if(curr_char != ';' && curr_char != '{')
+        {            
+            statement[statement_head++] = curr_char;
+
+            if(statement_head >= statement_size)
+            {
+                statement_size *= 2;
+                statement = (char*)realloc(statement, statement_size);
+            }
+        }
+        else
+        {
+            //qua lo statement è costruiro
+        }  
+        
+        prev_char = curr_char;
+        curr_char = succ_char;
+    }
+    while((succ_char = fgetc(in_stream)) != EOF);
+
+    free(statement);
+
+    if(ferror(in_stream))
+        return NULL;
+}
+    
 void free_linearization(char** linearization)
 {
     for(int i = 0; linearization[i] != NULL; i++)
         free(linearization[i]);
 
     free(linearization);
-}
-
-bool TypePresent(char* string, char** vect,int size)
-{
-    for(int i=0;i<size;i++)
-    {
-        if(strcmp(string,vect[i])==0)
-        {
-            return true;
-        }
-    }
-    return false;
 }
