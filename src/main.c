@@ -97,13 +97,14 @@ int main(int argc, char** argv)
 
     char** linearization = linearize(in_stream);
 
-    fclose(in_stream);
-
     if(linearization == NULL)
     {
         perror("Error during file operation");
+        fclose(in_stream);
         return EXIT_FAILURE;
     }
+
+    fclose(in_stream);
     
     struct statistics stat = analyze(linearization);
     free_linearization(linearization);
