@@ -1,9 +1,10 @@
 #ifndef LINEARIZER_H
 #define LINEARIZER_H
 
+#include "buffer.h"
 #include <stdio.h>
 
-char** linearize(FILE*);
-void free_linearization(char**);
+buffer linearize(FILE*);
+void free_linearization(buffer*);
 
 #endif

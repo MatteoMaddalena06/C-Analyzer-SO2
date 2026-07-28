@@ -32,9 +32,14 @@ bool push_data(buffer* buffer, void* data)
     return true;
 }
 
+void reset_head(buffer* buffer)
+{ buffer->head = 0; }
+
 void free_buffer(buffer* buffer)
 {
     free(buffer->data);
+    buffer->data = NULL;
     buffer->head = -1;
     buffer->size = 0;
+    buffer->data_size = 0;
 }

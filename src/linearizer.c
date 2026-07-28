@@ -1,9 +1,11 @@
 #include "header/linearizer.h"
+#include "header/buffer.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
 
 enum skip_type {
     NEWLINE_END,
@@ -69,18 +71,87 @@ static bool skip_end_delimiter(char curr_char, char prev_char)
     return false;
 } 
 
-char** linearize(FILE* in_stream)
+static unsigned long analyze_expr(buffer statement, unsigned long start, buffer* linearization)
 {
+    char* chars = (char*)statement.data + start;
+    unsigned long variable_char_count = 0, space_count = 0, brackets_count = 0, i = 0;
+    bool is_number = false, skip_field = false, start_with_bracket = chars[0] == '(';
+
+    while(true)
+    {
+        if(i - 1 >= 0 && chars[i - 1] == '.')
+            skip_field = true;
+
+        if(i - 2 >= 0 && chars[i - 1] == '>' && chars[i - 2] == '-')
+            skip_field = true;
+
+        if(chars[i] == ' ')
+            space_count++;
+
+        else if(!isalnum(chars[i]) && chars[i] != '_')
+        {
+            if(chars[i] == '(')
+                brackets_count++;
+
+            if(chars[i] == ')')
+                brackets_count--;
+
+            if(!is_number && variable_char_count != 0 && chars[i] != '(' && !skip_field)
+            {
+                char* variable_name = strndup(chars + i - space_count - variable_char_count, variable_char_count);
+                printf("%s\n", variable_name);
+                //push_data(linearization, &variable_name);
+            }
+
+            variable_char_count = space_count = 0;
+            is_number = skip_field = false;
+        }
+        else 
+        {
+            space_count = 0;
+
+            if(isdigit(chars[i]) && variable_char_count == 0)
+                is_number = true;
+
+            variable_char_count++;
+        }
+
+        if(chars[i] == ';' || (chars[i] == ',' && brackets_count == 0) || (chars[i] == ')' && brackets_count == 0 && start_with_bracket))
+            break;
+
+        i++;
+    }
+
+    return i + 1;
+}
+
+static void analyze_semicolon_statement(buffer statement, buffer* linearization)
+{
+    char c = '\0';
+    push_data(&statement, &c);
+    printf("%s\n", (char*)statement.data);
+}
+
+static void analyze_bracket_statement(buffer statement, buffer* linearization)
+{
+    char c = '\0';
+    push_data(&statement, &c);
+    printf("%s\n", (char*)statement.data);
+}
+
+buffer linearize(FILE* in_stream)
+{
+    buffer linearization = {NULL};
     char curr_char, succ_char, prev_char = 0;
 
     if((curr_char = fgetc(in_stream)) == EOF)
-        return NULL;
+        return linearization;
 
     if((succ_char = fgetc(in_stream)) == EOF && ferror(in_stream))
-        return NULL;
+        return linearization;
 
-    int statement_head = 0, statement_size = 1;
-    char* statement = (char*)malloc(sizeof(char));
+    buffer statement = create_buffer(sizeof(char));
+    linearization = create_buffer(sizeof(char*));
 
     struct skip skip = {false};
     bool skip_space = false;
@@ -99,36 +170,52 @@ char** linearize(FILE* in_stream)
 
         skip_space = (curr_char == ' ');
 
-        if(curr_char != ';' && curr_char != '{')
-        {            
-            statement[statement_head++] = curr_char;
+        push_data(&statement, &curr_char);
 
-            if(statement_head >= statement_size)
-            {
-                statement_size *= 2;
-                statement = (char*)realloc(statement, statement_size);
-            }
-        }
-        else
+        if(curr_char == ';')
         {
-            //qua lo statement è costruiro
-        }  
+            analyze_semicolon_statement(statement, &linearization);
+            reset_head(&statement);
+        }
+        else if(curr_char == '{')
+        {
+            analyze_bracket_statement(statement, &linearization);
+            reset_head(&statement);
+        }
         
         prev_char = curr_char;
         curr_char = succ_char;
     }
     while((succ_char = fgetc(in_stream)) != EOF);
 
-    free(statement);
+    int tmp = errno;
+    free_buffer(&statement);
+    errno = tmp;
 
     if(ferror(in_stream))
-        return NULL;
+        linearization.data = NULL;
+
+    return linearization;
 }
     
-void free_linearization(char** linearization)
+void free_linearization(buffer* linearization)
 {
-    for(int i = 0; linearization[i] != NULL; i++)
-        free(linearization[i]);
+    for(int i = 0; i < linearization->head - 1; i++)
+        free(((char**)linearization->data)[i]);
 
-    free(linearization);
+    free_buffer(linearization);
 }
+
+/*test
+int main(void)
+{
+    FILE* fp = fopen("test.c", "r");
+
+    linearize(fp);
+
+    buffer statement = {
+        "(a + b) + c;"
+    };
+
+    analyze_expr(statement, 0, NULL);
+}*/

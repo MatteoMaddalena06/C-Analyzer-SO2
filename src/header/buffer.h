@@ -6,7 +6,7 @@
 
 typedef struct {
     void* data;
-    size_t head;
+    unsigned long head;
     size_t size;
     size_t data_size;
 
@@ -14,6 +14,7 @@ typedef struct {
 
 buffer create_buffer(size_t);
 bool push_data(buffer*, void*);
+void reset_head(buffer*);
 void free_buffer(buffer*);
 
 #endif

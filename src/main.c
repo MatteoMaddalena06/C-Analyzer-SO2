@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "header/analyzer.h"
 #include "header/linearizer.h"
+#include "header/buffer.h"
 
 struct user_input{
     bool input_file_selected;
@@ -47,19 +48,22 @@ static void write_statistics(FILE* out_stream, struct statistics stat)
     fprintf(out_stream, "TOTAL UNCORRECT VARIABLE NAME: %d\n", stat.variable_name_uncorrect);
     fprintf(out_stream, "TOTAL UNCORRECT TYPE NAME: %d\n", stat.variable_type_uncorrect);
 
-    fprintf(out_stream, (stat.error_list_size) ? "ERROR LIST:\n" : "ERROR LIST: empty\n");
+    unsigned int error_list_size = \
+        stat.variable_name_uncorrect + stat.variable_type_uncorrect;
 
-    for(int i = 0; i < stat.error_list_size; i++)
+    fprintf(out_stream, (error_list_size) ? "ERROR LIST:\n" : "ERROR LIST: empty\n");
+
+    for(int i = 0; i < error_list_size; i++)
     {
         fprintf(out_stream, (stat.error_list[i].type == TYPE_ERROR) ? "TYPE ERROR, " : "NAME_ERROR, ");
         fprintf(out_stream, "%s, ", stat.error_list[i].lexeme);
-        fprintf(out_stream, (i == stat.error_list_size - 1) ? "%d\n" : "%d | ", stat.error_list[i].line); 
+        fprintf(out_stream, (i == error_list_size - 1) ? "%d\n" : "%d | ", stat.error_list[i].line); 
     }
 
-    fprintf(out_stream, (stat.variable_unused_list_size) ? "UNUSED VARIABLE LIST:\n" : "UNUSED VARIABLE LIST: empty\n");
+    fprintf(out_stream, (stat.variable_unused) ? "UNUSED VARIABLE LIST:\n" : "UNUSED VARIABLE LIST: empty\n");
 
-    for(int i = 0; i < stat.variable_unused_list_size; i++)
-        fprintf(out_stream, (i == stat.variable_unused_list_size - 1) ? "%s\n" : "%s | ", stat.variable_unused_list[i]);
+    for(int i = 0; i < stat.variable_unused; i++)
+        fprintf(out_stream, (i == stat.variable_unused - 1) ? "%s\n" : "%s | ", stat.variable_unused_list[i]);
 }
 
 int main(int argc, char** argv)
@@ -95,9 +99,9 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    char** linearization = linearize(in_stream);
+    buffer linearization = linearize(in_stream);
 
-    if(linearization == NULL)
+    if(linearization.data == NULL)
     {
         perror("Error during file operation");
         fclose(in_stream);
@@ -107,7 +111,7 @@ int main(int argc, char** argv)
     fclose(in_stream);
     
     struct statistics stat = analyze(linearization);
-    free_linearization(linearization);
+    free_linearization(&linearization);
 
     FILE* out_stream = stdout;
 
