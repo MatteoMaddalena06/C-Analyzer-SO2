@@ -71,18 +71,18 @@ static bool skip_end_delimiter(char curr_char, char prev_char)
     return false;
 } 
 
-static unsigned long analyze_expr(buffer statement, unsigned long start, buffer* linearization)
+static void analyze_expr(buffer statement, unsigned long start, unsigned long end, buffer* linearization)
 {
-    char* chars = (char*)statement.data + start;
-    unsigned long variable_char_count = 0, space_count = 0, brackets_count = 0, i = 0;
-    bool is_number = false, skip_field = false, start_with_bracket = chars[0] == '(';
+    char* chars = (char*)statement.data;
+    unsigned long variable_char_count = 0, space_count = 0;
+    bool is_number = false, skip_field = false;
 
-    while(true)
+    for(int i = start; i < end; i++)
     {
-        if(i - 1 >= 0 && chars[i - 1] == '.')
+        if(i - 1 >= start && chars[i - 1] == '.')
             skip_field = true;
 
-        if(i - 2 >= 0 && chars[i - 1] == '>' && chars[i - 2] == '-')
+        if(i - 2 >= start && chars[i - 1] == '>' && chars[i - 2] == '-')
             skip_field = true;
 
         if(chars[i] == ' ')
@@ -90,17 +90,13 @@ static unsigned long analyze_expr(buffer statement, unsigned long start, buffer*
 
         else if(!isalnum(chars[i]) && chars[i] != '_')
         {
-            if(chars[i] == '(')
-                brackets_count++;
-
-            if(chars[i] == ')')
-                brackets_count--;
+            if(i - space_count - 1 >= start && (chars[i] == '(' || chars[i] == '&') && chars[i - space_count - 1] == ')')
+                move_head(linearization, -1);  
 
             if(!is_number && variable_char_count != 0 && chars[i] != '(' && !skip_field)
             {
                 char* variable_name = strndup(chars + i - space_count - variable_char_count, variable_char_count);
-                printf("%s\n", variable_name);
-                //push_data(linearization, &variable_name);
+                push_data(linearization, &variable_name);
             }
 
             variable_char_count = space_count = 0;
@@ -108,35 +104,46 @@ static unsigned long analyze_expr(buffer statement, unsigned long start, buffer*
         }
         else 
         {
-            space_count = 0;
+            if(i - space_count - 1 >= start && chars[i - space_count - 1] == ')')
+                move_head(linearization, -1);
 
             if(isdigit(chars[i]) && variable_char_count == 0)
                 is_number = true;
 
+            space_count = 0;
             variable_char_count++;
         }
-
-        if(chars[i] == ';' || (chars[i] == ',' && brackets_count == 0) || (chars[i] == ')' && brackets_count == 0 && start_with_bracket))
-            break;
-
-        i++;
     }
-
-    return i + 1;
 }
 
 static void analyze_semicolon_statement(buffer statement, buffer* linearization)
 {
-    char c = '\0';
-    push_data(&statement, &c);
-    printf("%s\n", (char*)statement.data);
+    /*
+        casi ';':
+            while
+            for 
+            return 
+            dichiarazioni
+            espressioni
+            break
+            continue
+            typedef 
+    */ 
 }
 
 static void analyze_bracket_statement(buffer statement, buffer* linearization)
 {
-    char c = '\0';
-    push_data(&statement, &c);
-    printf("%s\n", (char*)statement.data);
+    /*
+        casi '{':
+            if 
+            else if 
+            while 
+            do 
+            for
+            typedef struct/union/enum nome {
+            struct/union/enum nome {
+            roba };
+    */
 }
 
 buffer linearize(FILE* in_stream)
@@ -206,16 +213,28 @@ void free_linearization(buffer* linearization)
     free_buffer(linearization);
 }
 
-/*test
 int main(void)
 {
-    FILE* fp = fopen("test.c", "r");
+    /*FILE* fp = fopen("test.c", "r");
 
-    linearize(fp);
+    buffer linearization = linearize(fp);
+
+    for(int i = 0; i < linearization.head; i++)
+        printf("%s\n", ((char**)linearization.data)[i]);
+
+    free_linearization(&linearization);
+    fclose(fp);*/
+
+    buffer linearization = create_buffer(sizeof(char*));
 
     buffer statement = {
-        "(a + b) + c;"
+        "                                   ((int)(*a) + 5 + (int)b + (c + d / 32) + foo(a, b, std_45) + a->r + sizeof(int + a)) {"
     };
 
-    analyze_expr(statement, 0, NULL);
-}*/
+    analyze_expr(statement, 0, 122, &linearization);
+
+    for(int i = 0; i < linearization.head; i++)
+        printf("%s\n", ((char**)linearization.data)[i]);
+
+    free_linearization(&linearization);
+}
