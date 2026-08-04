@@ -306,8 +306,10 @@ static void analyze_composite_type_statement(buffer statement, unsigned long sta
     tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
     push_data(&output->linearization, &tmp_ptr);
 
-    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
-    push_data(&output->type_list, &tmp_ptr);
+    tmp_ptr = strdup(";");
+    push_data(&output->linearization, &tmp_ptr);
+
+    store_type(output, statement, last_token_start, last_token_end);
 }
 
 static void analyze_typedef_statement(buffer statement, unsigned long statement_start, unsigned first_token_end, struct output* output)
@@ -325,8 +327,10 @@ static void analyze_typedef_statement(buffer statement, unsigned long statement_
     tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
     push_data(&output->linearization, &tmp_ptr);
 
-    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
-    push_data(&output->type_list, &tmp_ptr);
+    tmp_ptr = strdup(";");
+    push_data(&output->linearization, &tmp_ptr);
+
+    store_type(output, statement, last_token_start, last_token_end);
 }
 
 static void analyze_semicolon_statement(buffer statement, struct output* output)
@@ -463,6 +467,7 @@ void free_output(struct output* output)
     free_buffer(&output->type_list);
 }
 
+//TEST
 int main(void)
 {
     FILE* fp = fopen("test.c", "r");
@@ -471,6 +476,11 @@ int main(void)
 
     for(int i = 0; i < out.linearization.head; i++)
         printf("%s\n", ((char**)out.linearization.data)[i]);
+
+    printf("\n");
+
+    for(int i = 0; i < out.type_list.head; i++)
+        printf("%s\n", ((char**)out.type_list.data)[i]);  
 
     free_output(&out);
 }
