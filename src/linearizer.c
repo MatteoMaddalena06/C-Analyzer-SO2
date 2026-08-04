@@ -1,11 +1,9 @@
 #include "header/linearizer.h"
 #include "header/buffer.h"
 #include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #include <errno.h>
+#include <sys/types.h>
 
 enum skip_type {
     NEWLINE_END,
@@ -71,44 +69,142 @@ static bool skip_end_delimiter(char curr_char, char prev_char)
     return false;
 } 
 
-static void analyze_expr(buffer statement, unsigned long start, unsigned long end, buffer* linearization)
+static bool is_type_impl(buffer type_list, char* id, size_t len)
+{
+    char** types = (char**)type_list.data;
+    unsigned long i;
+
+    for(i = 0; i < len && id[i] != '*'; i++);
+
+    if(i != len && i >= 1 && id[i - 1] == ' ')
+        i--;
+    
+    for(int j = 0; j < type_list.head; j++)
+    {
+        if(strlen(types[j]) == i && !strncmp(types[j], id, i))
+            return true;
+    }
+
+    return false;
+}
+
+bool is_type(buffer type_list, char* id)
+{ return is_type_impl(type_list, id, strlen(id)); }
+
+static bool is_type_range(struct output output, buffer statement, unsigned long start, unsigned long end)
+{ return is_type_impl(output.type_list, (char*)statement.data + start, end - start); }
+
+static void store_type(struct output* output, buffer statement, unsigned long start, unsigned long end) 
+{
+    char* tmp_ptr = strndup((char*)statement.data + start, end - start);
+    push_data(&output->type_list, &tmp_ptr);
+}
+
+static struct output init_output()
+{
+    char* std_type[] = {
+        "void",                  
+        "char",                   
+        "signed char",            
+        "unsigned char",          
+        "short",                  
+        "short int",              
+        "signed short",          
+        "signed short int",       
+        "unsigned short",         
+        "unsigned short int",     
+        "int",                    
+        "signed",                  
+        "signed int",             
+        "unsigned",               
+        "unsigned int",           
+        "long",                   
+        "long int",               
+        "signed long",            
+        "signed long int",        
+        "unsigned long",          
+        "unsigned long int",     
+        "long long",              
+        "long long int",          
+        "signed long long",      
+        "signed long long int",   
+        "unsigned long long",     
+        "unsigned long long int", 
+        "float",                 
+        "double",                 
+        "long double",           
+        "_Bool",                  
+    };
+
+    buffer type_buffer = create_buffer(sizeof(char*));
+
+    for(int i = 0; i < 31; i++)
+    {
+        char* tmp_ptr = strdup(std_type[i]);
+        push_data(&type_buffer, &tmp_ptr);
+    }
+
+    struct output out = {
+        create_buffer(sizeof(char*)),
+        type_buffer,
+        false
+    };
+
+    return out;
+}
+
+static void analyze_expr(buffer statement, unsigned long start, unsigned long end, struct output* output)
 {
     char* chars = (char*)statement.data;
-    unsigned long variable_char_count = 0, space_count = 0;
-    bool is_number = false, skip_field = false;
+    unsigned long variable_char_count = 0, space_count = 0, start_bracket, brackets_count = 0;
+    bool not_var = false;
 
     for(int i = start; i < end; i++)
     {
-        if(i - 1 >= start && chars[i - 1] == '.')
-            skip_field = true;
+        if(chars[i] == ')' && brackets_count)
+        {
+            brackets_count--;
 
-        if(i - 2 >= start && chars[i - 1] == '>' && chars[i - 2] == '-')
-            skip_field = true;
+            if(!brackets_count && !is_type_range(*output, statement, start_bracket + 1, i))
+                analyze_expr(statement, start_bracket + 1, i + 1, output);
+        }
+        else if(chars[i] == '(')
+        {
+            if(brackets_count == 0) 
+                start_bracket = i;
+
+            brackets_count++;
+            variable_char_count = space_count = 0;
+            not_var = false;
+        }
+
+        if(brackets_count != 0)
+            continue;
+
+        if(i >= start + 1 && chars[i - 1] == '.')
+            not_var = true;
+
+        if(i >= start + 2 && chars[i - 1] == '>' && chars[i - 2] == '-')
+            not_var = true;
 
         if(chars[i] == ' ')
             space_count++;
 
         else if(!isalnum(chars[i]) && chars[i] != '_')
         {
-            if(i - space_count - 1 >= start && (chars[i] == '(' || chars[i] == '&') && chars[i - space_count - 1] == ')')
-                move_head(linearization, -1);  
-
-            if(!is_number && variable_char_count != 0 && chars[i] != '(' && !skip_field)
+            if(!not_var && variable_char_count != 0)
             {
                 char* variable_name = strndup(chars + i - space_count - variable_char_count, variable_char_count);
-                push_data(linearization, &variable_name);
+                push_data(&output->linearization, &variable_name);
             }
 
             variable_char_count = space_count = 0;
-            is_number = skip_field = false;
+            not_var = false;
         }
         else 
         {
-            if(i - space_count - 1 >= start && chars[i - space_count - 1] == ')')
-                move_head(linearization, -1);
-
             if(isdigit(chars[i]) && variable_char_count == 0)
-                is_number = true;
+                not_var = true;
 
             space_count = 0;
             variable_char_count++;
@@ -116,7 +212,124 @@ static void analyze_expr(buffer statement, unsigned long start, unsigned long en
     }
 }
 
-static void analyze_semicolon_statement(buffer statement, buffer* linearization)
+static unsigned long get_statement_start(buffer statement)
+{
+    char* chars = (char*)statement.data;
+    unsigned long i;
+
+    for(i = 0; !isalnum(chars[i]); i++);
+
+    return i;
+}
+
+static unsigned long find_char(buffer statement, char c, unsigned long start)
+{
+    char* chars = (char*)statement.data;
+    unsigned long i;
+
+    for(i = start; chars[i] != c && i < statement.head; i++);
+
+    return i;
+}
+
+static unsigned long extract_token_from_start(buffer statement, unsigned long start)
+{
+    char* chars = (char*)statement.data;
+    unsigned long i;
+
+    for(i = start; isalnum(chars[i]) && i < statement.head; i++);
+
+    return i;
+}
+
+static unsigned long extract_token_from_end(buffer statement, unsigned long end)
+{
+    char* chars = (char*)statement.data;
+    unsigned long i;
+
+    for(i = end; i > 0 && isalnum(chars[i - 1]); i--);
+
+    return i;
+}
+
+static bool compare(buffer statement, char* string, unsigned long start, unsigned long end)
+{
+    char* chars = (char*)statement.data + start;
+    size_t string_size;
+
+    for(string_size = 0; string[string_size] != '\0'; string_size++)
+    {
+        if(string[string_size] != chars[string_size])
+            return false;
+    }
+
+    return string_size == (end - start);
+}
+
+static bool is_condition_token(buffer statement, unsigned long start, unsigned long end)
+{
+    char* condition_tokens[] = {
+        "if",
+        "while",
+        "for",
+        "switch"
+    };
+
+    for(int i = 0; i < 4; i++)
+    {
+        if(compare(statement, condition_tokens[i], start, end))
+            return true;
+    }
+
+    return false;
+}
+
+static void analyze_declaration(buffer statement, unsigned long start, unsigned long end)
+{
+    //TODO
+}
+
+static void analyze_for_statement(buffer statement) 
+{
+    //TODO
+}
+
+static void analyze_composite_type_statement(buffer statement, unsigned long statement_start, struct output* output)
+{
+    char* chars = (char*)statement.data;
+    unsigned long last_token_end = statement.head - ((chars[statement.head - 2] == ' ') ? 2 : 1);
+    unsigned long last_token_start = extract_token_from_end(statement, last_token_end);
+
+    char* tmp_ptr = strndup(chars + statement_start, last_token_start - statement_start - 1);
+    push_data(&output->linearization, &tmp_ptr);
+
+    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
+    push_data(&output->linearization, &tmp_ptr);
+
+    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
+    push_data(&output->type_list, &tmp_ptr);
+}
+
+static void analyze_typedef_statement(buffer statement, unsigned long statement_start, unsigned first_token_end, struct output* output)
+{
+    char* chars = (char*)statement.data;
+    unsigned long last_token_end = statement.head - ((chars[statement.head - 2] == ' ') ? 2 : 1);
+    unsigned long last_token_start = extract_token_from_end(statement, last_token_end);
+
+    char* tmp_ptr = strdup("typedef");
+    push_data(&output->linearization, &tmp_ptr);
+
+    tmp_ptr = strndup(chars + first_token_end + 1, last_token_start - first_token_end - 2);
+    push_data(&output->linearization, &tmp_ptr);
+
+    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
+    push_data(&output->linearization, &tmp_ptr);
+
+    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
+    push_data(&output->type_list, &tmp_ptr);
+}
+
+static void analyze_semicolon_statement(buffer statement, struct output* output)
 {
     /*
         casi ';':
@@ -131,34 +344,66 @@ static void analyze_semicolon_statement(buffer statement, buffer* linearization)
     */ 
 }
 
-static void analyze_bracket_statement(buffer statement, buffer* linearization)
+static void analyze_bracket_statement(buffer statement, struct output* output)
 {
-    /*
-        casi '{':
-            if 
-            else if 
-            while 
-            do 
-            for
-            typedef struct/union/enum nome {
-            struct/union/enum nome {
-            roba };
-    */
+    char* chars = (char*)statement.data;
+    unsigned long statement_start = get_statement_start(statement);
+    unsigned long first_token_end = extract_token_from_start(statement, statement_start);
+
+    if(compare(statement, "typedef", statement_start, first_token_end))
+    {
+        analyze_typedef_statement(statement, statement_start, first_token_end, output);
+        return;
+    }
+    
+    if(compare(statement, "struct", statement_start, first_token_end) || \
+        compare(statement, "union", statement_start, first_token_end) || \
+        compare(statement, "enum", statement_start, first_token_end))
+    {
+        analyze_composite_type_statement(statement, statement_start, output);
+        return;
+    }
+
+    unsigned long bracket_pos = find_char(statement, '(', statement_start);
+
+    if(bracket_pos >= statement.head)
+        return;
+
+    unsigned long prebracket_token_start = extract_token_from_end(
+        statement, bracket_pos - ((chars[bracket_pos - 1] == ' ') ? 1 : 0));
+
+    if(!is_condition_token(statement, prebracket_token_start, bracket_pos))
+    {
+        unsigned long declaration_start = bracket_pos + 1;
+        unsigned long declaration_end = find_char(statement, ',', declaration_start);
+
+        while(declaration_end < statement.head)
+        {
+            analyze_declaration(statement, declaration_start, declaration_end);
+            declaration_start = declaration_end + 1;
+            declaration_end = find_char(statement, ',', declaration_start);
+        }
+    }
+    else if(compare(statement, "for", prebracket_token_start, bracket_pos)) 
+        analyze_for_statement(statement);
+
+    else
+        analyze_expr(statement, bracket_pos, statement.head, output);
 }
 
-buffer linearize(FILE* in_stream)
+struct output linearize(FILE* in_stream)
 {
-    buffer linearization = {NULL};
+    struct output output = init_output();
     char curr_char, succ_char, prev_char = 0;
 
-    if((curr_char = fgetc(in_stream)) == EOF)
-        return linearization;
-
-    if((succ_char = fgetc(in_stream)) == EOF && ferror(in_stream))
-        return linearization;
+    if((curr_char = fgetc(in_stream)) == EOF || \
+       (succ_char = fgetc(in_stream)) == EOF && ferror(in_stream))
+    {
+        output.error_occured = true;
+        return output;
+    }
 
     buffer statement = create_buffer(sizeof(char));
-    linearization = create_buffer(sizeof(char*));
 
     struct skip skip = {false};
     bool skip_space = false;
@@ -181,12 +426,12 @@ buffer linearize(FILE* in_stream)
 
         if(curr_char == ';')
         {
-            analyze_semicolon_statement(statement, &linearization);
+            analyze_semicolon_statement(statement, &output);
             reset_head(&statement);
         }
         else if(curr_char == '{')
         {
-            analyze_bracket_statement(statement, &linearization);
+            analyze_bracket_statement(statement, &output);
             reset_head(&statement);
         }
         
@@ -200,41 +445,32 @@ buffer linearize(FILE* in_stream)
     errno = tmp;
 
     if(ferror(in_stream))
-        linearization.data = NULL;
+        output.error_occured = true;
 
-    return linearization;
+    return output;
 }
     
-void free_linearization(buffer* linearization)
+void free_output(struct output* output)
 {
-    for(int i = 0; i < linearization->head - 1; i++)
-        free(((char**)linearization->data)[i]);
+    for(int i = 0; i < output->linearization.head; i++)
+        free(((char**)output->linearization.data)[i]);
 
-    free_buffer(linearization);
+    free_buffer(&output->linearization);
+
+    for(int i = 0; i < output->type_list.head; i++)
+        free(((char**)output->type_list.data)[i]);
+
+    free_buffer(&output->type_list);
 }
 
 int main(void)
 {
-    /*FILE* fp = fopen("test.c", "r");
+    FILE* fp = fopen("test.c", "r");
 
-    buffer linearization = linearize(fp);
+    struct output out = linearize(fp);
 
-    for(int i = 0; i < linearization.head; i++)
-        printf("%s\n", ((char**)linearization.data)[i]);
+    for(int i = 0; i < out.linearization.head; i++)
+        printf("%s\n", ((char**)out.linearization.data)[i]);
 
-    free_linearization(&linearization);
-    fclose(fp);*/
-
-    buffer linearization = create_buffer(sizeof(char*));
-
-    buffer statement = {
-        "                                   ((int)(*a) + 5 + (int)b + (c + d / 32) + foo(a, b, std_45) + a->r + sizeof(int + a)) {"
-    };
-
-    analyze_expr(statement, 0, 122, &linearization);
-
-    for(int i = 0; i < linearization.head; i++)
-        printf("%s\n", ((char**)linearization.data)[i]);
-
-    free_linearization(&linearization);
+    free_output(&out);
 }

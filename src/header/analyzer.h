@@ -1,7 +1,7 @@
 #ifndef ANALYZER_H 
 #define ANALYZER_H
 
-#include "buffer.h"
+#include "linearizer.h"
 
 enum error_type{
     NAME_ERROR, 
@@ -22,7 +22,7 @@ struct statistics{
     unsigned int variable_type_uncorrect;
 };
 
-struct statistics analyze(buffer);
+struct statistics analyze(struct output);
 void free_stat(struct statistics*);
 
 #endif 

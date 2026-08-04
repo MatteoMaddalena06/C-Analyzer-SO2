@@ -98,9 +98,9 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    buffer linearization = linearize(in_stream);
+    struct output linearize_out = linearize(in_stream);
 
-    if(linearization.data == NULL)
+    if(linearize_out.error_occured)
     {
         perror("Error during file operation");
         fclose(in_stream);
@@ -109,8 +109,8 @@ int main(int argc, char** argv)
 
     fclose(in_stream);
     
-    struct statistics stat = analyze(linearization);
-    free_linearization(&linearization);
+    struct statistics stat = analyze(linearize_out);
+    free_output(&linearize_out);
 
     FILE* out_stream = stdout;
 

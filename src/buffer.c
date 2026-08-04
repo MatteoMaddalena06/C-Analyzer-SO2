@@ -35,14 +35,6 @@ bool push_data(buffer* buffer, void* data)
 void reset_head(buffer* buffer)
 { buffer->head = 0; }
 
-void move_head(buffer* buffer, long offset)
-{ 
-    if(buffer->head + offset >= buffer->size)
-        return;
-    
-    buffer->head += offset;
-}
-
 void free_buffer(buffer* buffer)
 {
     free(buffer->data);
