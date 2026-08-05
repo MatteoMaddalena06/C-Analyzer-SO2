@@ -1,9 +1,19 @@
 #include "header/linearizer.h"
 #include "header/buffer.h"
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/types.h>
+
+static char* pending_name = NULL;
+
+void set_pending_name(char* name)
+{
+    if(pending_name != NULL)
+        free(pending_name);
+
+    pending_name = name;
+}
 
 enum skip_type {
     NEWLINE_END,
@@ -217,7 +227,12 @@ static unsigned long get_statement_start(buffer statement)
     char* chars = (char*)statement.data;
     unsigned long i;
 
-    for(i = 0; !isalnum(chars[i]); i++);
+    for(i = 0; chars[i] != ':' && i < statement.head; i++);
+
+    if(i >= statement.head)
+        i = 0;
+
+    for(;!isalnum(chars[i]) && i < statement.head; i++);
 
     return i;
 }
@@ -237,7 +252,7 @@ static unsigned long extract_token_from_start(buffer statement, unsigned long st
     char* chars = (char*)statement.data;
     unsigned long i;
 
-    for(i = start; isalnum(chars[i]) && i < statement.head; i++);
+    for(i = start; (isalnum(chars[i]) || chars[i] == '_') && i < statement.head; i++);
 
     return i;
 }
@@ -247,7 +262,7 @@ static unsigned long extract_token_from_end(buffer statement, unsigned long end)
     char* chars = (char*)statement.data;
     unsigned long i;
 
-    for(i = end; i > 0 && isalnum(chars[i - 1]); i--);
+    for(i = end; i > 0 && (isalnum(chars[i - 1]) || chars[i - 1] == '_'); i--);
 
     return i;
 }
@@ -257,7 +272,7 @@ static bool compare(buffer statement, char* string, unsigned long start, unsigne
     char* chars = (char*)statement.data + start;
     size_t string_size;
 
-    for(string_size = 0; string[string_size] != '\0'; string_size++)
+    for(string_size = 0; string[string_size] != '\0' && string_size < end - start; string_size++)
     {
         if(string[string_size] != chars[string_size])
             return false;
@@ -284,32 +299,37 @@ static bool is_condition_token(buffer statement, unsigned long start, unsigned l
     return false;
 }
 
-static void analyze_declaration(buffer statement, unsigned long start, unsigned long end)
+static void analyze_declaration(buffer statement, unsigned long start, unsigned long end, struct output* output)
 {
     //TODO
+    char* tmp_ptr = strdup("DECLARATION");
+    push_data(&output->linearization, &tmp_ptr);
 }
 
-static void analyze_for_statement(buffer statement) 
-{
-    //TODO
-}
-
-static void analyze_composite_type_statement(buffer statement, unsigned long statement_start, struct output* output)
+static void analyze_composite_type(buffer statement, unsigned long statement_start, struct output* output, bool pending)
 {
     char* chars = (char*)statement.data;
     unsigned long last_token_end = statement.head - ((chars[statement.head - 2] == ' ') ? 2 : 1);
-    unsigned long last_token_start = extract_token_from_end(statement, last_token_end);
 
-    char* tmp_ptr = strndup(chars + statement_start, last_token_start - statement_start - 1);
-    push_data(&output->linearization, &tmp_ptr);
+    if(compare(statement, "struct", statement_start, last_token_end) || \
+       compare(statement, "union", statement_start, last_token_end) || \
+       compare(statement, "enum", statement_start, last_token_end))
+        return;
+    
+    store_type(output, statement, statement_start, last_token_end);
 
-    tmp_ptr = strndup(chars + last_token_start, last_token_end - last_token_start);
+    char* tmp_ptr = strndup(chars + statement_start, last_token_end - statement_start);
+
+    if(pending)
+    {
+        set_pending_name(tmp_ptr);
+        return;
+    }
+
     push_data(&output->linearization, &tmp_ptr);
 
     tmp_ptr = strdup(";");
     push_data(&output->linearization, &tmp_ptr);
-
-    store_type(output, statement, last_token_start, last_token_end);
 }
 
 static void analyze_typedef_statement(buffer statement, unsigned long statement_start, unsigned first_token_end, struct output* output)
@@ -335,17 +355,49 @@ static void analyze_typedef_statement(buffer statement, unsigned long statement_
 
 static void analyze_semicolon_statement(buffer statement, struct output* output)
 {
-    /*
-        casi ';':
-            while
-            for 
-            return 
-            dichiarazioni
-            espressioni
-            break
-            continue
-            typedef 
-    */ 
+    char* chars = (char*)statement.data;
+    unsigned long statement_start = get_statement_start(statement);
+    unsigned long first_token_end = extract_token_from_start(statement, statement_start);
+
+    if(statement_start >= statement.head)
+        return;
+
+    //da gestire meglio caso "} nome;". Adesso altri casi vengono confusi per questo
+    if((chars[0] == '}' || (statement.head >= 2 && chars[1] == '}')) && \
+        !is_condition_token(statement, statement_start, first_token_end)) 
+    {
+        char* tmp_ptr = strdup("typedef");
+        push_data(&output->linearization, &tmp_ptr);
+
+        if(pending_name != NULL)
+            push_data(&output->linearization, &pending_name);
+
+        tmp_ptr = strndup(chars + statement_start, first_token_end - statement_start);
+        push_data(&output->linearization, &tmp_ptr);
+
+        tmp_ptr = strdup(";");
+        push_data(&output->linearization, &tmp_ptr);
+    }
+    else if(compare(statement, "while", statement_start, first_token_end) || \
+        compare(statement, "return", statement_start, first_token_end))
+    {
+        analyze_expr(statement, first_token_end, statement.head, output);
+
+        char* tmp_ptr = strdup(";");
+        push_data(&output->linearization, &tmp_ptr);
+    }
+    else if(compare(statement, "typedef", statement_start, first_token_end))
+        analyze_typedef_statement(statement, statement_start, first_token_end, output);
+
+    else if(compare(statement, "continue", statement_start, first_token_end) || \
+        compare(statement, "break", statement_start, first_token_end) || \
+        compare(statement, "goto", statement_start, first_token_end))
+            return;
+    
+    else
+    {
+        //dichiarazione o espressione
+    }
 }
 
 static void analyze_bracket_statement(buffer statement, struct output* output)
@@ -354,17 +406,20 @@ static void analyze_bracket_statement(buffer statement, struct output* output)
     unsigned long statement_start = get_statement_start(statement);
     unsigned long first_token_end = extract_token_from_start(statement, statement_start);
 
+    if(statement_start >= statement.head)
+        return;
+
     if(compare(statement, "typedef", statement_start, first_token_end))
     {
-        analyze_typedef_statement(statement, statement_start, first_token_end, output);
+        analyze_composite_type(statement, first_token_end + 1, output, true);
         return;
     }
-    
+
     if(compare(statement, "struct", statement_start, first_token_end) || \
         compare(statement, "union", statement_start, first_token_end) || \
         compare(statement, "enum", statement_start, first_token_end))
     {
-        analyze_composite_type_statement(statement, statement_start, output);
+        analyze_composite_type(statement, statement_start, output, false);
         return;
     }
 
@@ -372,7 +427,7 @@ static void analyze_bracket_statement(buffer statement, struct output* output)
 
     if(bracket_pos >= statement.head)
         return;
-
+   
     unsigned long prebracket_token_start = extract_token_from_end(
         statement, bracket_pos - ((chars[bracket_pos - 1] == ' ') ? 1 : 0));
 
@@ -383,16 +438,23 @@ static void analyze_bracket_statement(buffer statement, struct output* output)
 
         while(declaration_end < statement.head)
         {
-            analyze_declaration(statement, declaration_start, declaration_end);
+            analyze_declaration(statement, declaration_start, declaration_end, output);
             declaration_start = declaration_end + 1;
             declaration_end = find_char(statement, ',', declaration_start);
         }
+        
+        declaration_end = find_char(statement, ')', declaration_start); 
+        analyze_declaration(statement, declaration_start, declaration_end, output);
     }
-    else if(compare(statement, "for", prebracket_token_start, bracket_pos)) 
-        analyze_for_statement(statement);
-
     else
+    {
         analyze_expr(statement, bracket_pos, statement.head, output);
+
+        char* tmp_ptr = strdup(";");
+        push_data(&output->linearization, &tmp_ptr);
+    }
+
+    //manca fine for
 }
 
 struct output linearize(FILE* in_stream)
@@ -425,7 +487,6 @@ struct output linearize(FILE* in_stream)
         }  
 
         skip_space = (curr_char == ' ');
-
         push_data(&statement, &curr_char);
 
         if(curr_char == ';')
@@ -477,10 +538,24 @@ int main(void)
     for(int i = 0; i < out.linearization.head; i++)
         printf("%s\n", ((char**)out.linearization.data)[i]);
 
-    printf("\n");
+    /*printf("\n");
 
     for(int i = 0; i < out.type_list.head; i++)
-        printf("%s\n", ((char**)out.type_list.data)[i]);  
+        printf("%s\n", ((char**)out.type_list.data)[i]); */
 
     free_output(&out);
 }
+
+/*
+    Lista delle ipotesi:
+        1.  il codice è sintatticamente e semanticamente corretto tranne nel nome delle variabili e dei tipi
+        2.  le espressioni sono ben scritte (non possono quindi contenere tipo o variabili mal formattati)
+        3.  le parentesi graffe nelle dichiarazione non sono ammesse
+        4.  i nomi delle variabili e dei tipi non possono essere composti da '{' o ';'
+        6.  gli usi dei campi dei tipi composti sono ignorati
+        7.  l'operatore ternario non viene gestito
+        8.  sono ignorati costrutti avanzati del linguaggio presenti nelle ultime versioni
+        9.  vengono gestiti solo i tipi interni al file; tutti gli altri vengono trattati come variabili
+        10. le MACRO non sono gestite e perciò vengono considerate variabili
+        11. niente shadowing delle variabili
+*/

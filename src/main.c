@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include "header/analyzer.h"
 #include "header/linearizer.h"
-#include "header/buffer.h"
 
 struct user_input{
     bool input_file_selected;
