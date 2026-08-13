@@ -2,6 +2,7 @@
 #define ANALYZER_H
 
 #include "linearizer.h"
+#include "buffer.h"
 
 enum error_type{
     NAME_ERROR, 
@@ -15,11 +16,9 @@ struct error{
 
 struct statistics{
     unsigned int variable_analyzed;
-    char** variable_unused_list;
-    unsigned int variable_unused;
-    struct error* error_list;
-    unsigned int variable_name_uncorrect;
-    unsigned int variable_type_uncorrect;
+    buffer variable_unused_list;
+    buffer error_list;
+  
 };
 
 struct statistics analyze(struct output);
