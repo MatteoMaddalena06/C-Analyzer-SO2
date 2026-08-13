@@ -113,7 +113,7 @@ static bool skip_end_delimiter(char curr_char, char prev_char)
         linearization = il puntatore alla linearizzazione 
         semicolon = il tipo di separatore (true per ";", false per ",")
  */
-static  void store_separator(buffer* linearization, bool semicolon)
+static void store_separator(buffer* linearization, bool semicolon)
 {
     char* tmp_ptr = (semicolon) ? strdup(";") : strdup(",");
     push_data(linearization, &tmp_ptr);
@@ -131,13 +131,13 @@ static  void store_separator(buffer* linearization, bool semicolon)
 static bool is_type_impl(buffer type_list, char* id, size_t len)
 {
     char** types = (char**)type_list.data;
-    int i;
+    unsigned long i;
 
     for(i = len - 1; id[i] == '*' || id[i] == ' '; i--);
 
     i += 1;
 
-    for(int j = 0; j < type_list.head; j++)
+    for(unsigned long j = 0; j < type_list.head; j++)
     {
         if(strlen(types[j]) == i && !strncmp(types[j], id, i))
             return true;
@@ -238,7 +238,7 @@ static void analyze_expr(buffer statement, unsigned long start, unsigned long en
     unsigned long variable_char_count = 0, space_count = 0, start_bracket, brackets_count = 0;
     bool not_var = false;
 
-    for(int i = start; i < end; i++)
+    for(unsigned long i = start; i < end; i++)
     {
         if(chars[i] == ')' && brackets_count)
         {
@@ -868,18 +868,18 @@ struct output linearize(FILE* in_stream)
 */
 void free_output(struct output* output)
 {
-    for(int i = 0; i < output->linearization.head; i++)
+    for(unsigned long i = 0; i < output->linearization.head; i++)
         free(((char**)output->linearization.data)[i]);
 
     free_buffer(&output->linearization);
 
-    for(int i = 0; i < output->type_list.head; i++)
+    for(unsigned long i = 0; i < output->type_list.head; i++)
         free(((char**)output->type_list.data)[i]);
 
     free_buffer(&output->type_list);
 }
 
-/*TEST
+//TEST
 int main(void)
 {
     FILE* fp = fopen("test.c", "r");
@@ -895,7 +895,7 @@ int main(void)
         printf("%s\n", ((char**)out.type_list.data)[i]);
 
     free_output(&out);
-}*/
+}
 
 /*
     Lista delle ipotesi:

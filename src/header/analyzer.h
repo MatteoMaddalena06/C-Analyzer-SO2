@@ -4,21 +4,20 @@
 #include "linearizer.h"
 #include "buffer.h"
 
-enum error_type{
+enum error_type { 
     NAME_ERROR, 
     TYPE_ERROR,
 };
 
-struct error{
+struct error {
     char* lexeme;
     enum error_type type;
 };
 
-struct statistics{
-    unsigned int variable_analyzed;
+struct statistics {
+    unsigned long int variable_analyzed;
     buffer variable_unused_list;
     buffer error_list;
-  
 };
 
 struct statistics analyze(struct output);

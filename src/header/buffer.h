@@ -15,6 +15,7 @@ typedef struct {
 buffer create_buffer(size_t);
 bool push_data(buffer*, void*);
 void reset_head(buffer*);
+bool remove_data(buffer*, unsigned long);
 void free_buffer(buffer*);
 
 #endif

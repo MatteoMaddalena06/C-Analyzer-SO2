@@ -41,27 +41,25 @@ static int parse_opt(int key, char* arg, struct argp_state* state)
 
 static void write_statistics(FILE* out_stream, struct statistics stat)
 {
-    unsigned int error_list_size = \
-        stat.variable_name_uncorrect + stat.variable_type_uncorrect;
+    struct error** error_list = (struct error**)stat.error_list.data;
+    char** variable_unused_list = (char**)stat.variable_unused_list.data;
 
-    fprintf(out_stream, "TOTAL VARIABLE ANALYZED: %d\n", stat.variable_analyzed);
-    fprintf(out_stream, "TOTAL ERROR FOUND: %d\n", error_list_size + stat.variable_unused);
-    fprintf(out_stream, "TOTAL UNUSED VARIABLE: %d\n", stat.variable_unused);
-    fprintf(out_stream, "TOTAL UNCORRECT VARIABLE NAME: %d\n", stat.variable_name_uncorrect);
-    fprintf(out_stream, "TOTAL UNCORRECT TYPE NAME: %d\n", stat.variable_type_uncorrect);
+    fprintf(out_stream, "TOTAL VARIABLE ANALYZED: %lu\n", stat.variable_analyzed);
+    fprintf(out_stream, "TOTAL ERROR FOUND: %lu\n", stat.error_list.head);
+    fprintf(out_stream, "TOTAL UNUSED VARIABLE: %lu\n", stat.variable_unused_list.head);
 
-    fprintf(out_stream, (error_list_size) ? "ERROR LIST:\n" : "ERROR LIST: empty\n");
+    fprintf(out_stream, (stat.error_list.head) ? "ERROR LIST:\n" : "ERROR LIST: empty\n");
 
-    for(int i = 0; i < error_list_size; i++)
+    for(int i = 0; i < stat.error_list.head; i++)
     {
-        fprintf(out_stream, (stat.error_list[i].type == TYPE_ERROR) ? "TYPE ERROR, " : "NAME_ERROR, ");
-        fprintf(out_stream, (i == error_list_size - 1) ? "%s\n" : "%s | ", stat.error_list[i].lexeme); 
+        fprintf(out_stream, (error_list[i]->type == TYPE_ERROR) ? "TYPE ERROR, " : "NAME_ERROR, ");
+        fprintf(out_stream, (i == stat.error_list.head - 1) ? "%s\n" : "%s | ", error_list[i]->lexeme); 
     }
 
-    fprintf(out_stream, (stat.variable_unused) ? "UNUSED VARIABLE LIST:\n" : "UNUSED VARIABLE LIST: empty\n");
+    fprintf(out_stream, (stat.variable_unused_list.head) ? "UNUSED VARIABLE LIST:\n" : "UNUSED VARIABLE LIST: empty\n");
 
-    for(int i = 0; i < stat.variable_unused; i++)
-        fprintf(out_stream, (i == stat.variable_unused - 1) ? "%s\n" : "%s | ", stat.variable_unused_list[i]);
+    for(int i = 0; i <  stat.variable_unused_list.head; i++)
+        fprintf(out_stream, (i == stat.variable_unused_list.head - 1) ? "%s\n" : "%s | ", variable_unused_list[i]);
 }
 
 int main(int argc, char** argv)

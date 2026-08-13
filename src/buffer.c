@@ -35,6 +35,23 @@ bool push_data(buffer* buffer, void* data)
 void reset_head(buffer* buffer)
 { buffer->head = 0; }
 
+bool remove_data(buffer* buffer, unsigned long index)
+{
+    if(index >= buffer->head)
+        return false;
+
+    buffer->head--;
+
+    for(unsigned long i = index; i < buffer->head; i++)
+        memcpy(
+            (char*)buffer->data + i * buffer->data_size, 
+            (char*)buffer->data + (i + 1) * buffer->data_size,
+            buffer->data_size
+        );
+
+    return true;
+}
+
 void free_buffer(buffer* buffer)
 {
     free(buffer->data);
