@@ -5,20 +5,26 @@
 #include <stdbool.h>
 #include <ctype.h>
 
-static bool search_in_array(char** arr, size_t size, char* string)
+static unsigned long search_in_array(char** arr, size_t size, char* string)
 {
     for(unsigned long i = 0; i<size; i++)
     {
         if(!strcmp(string, arr[i]))
-            return true;
+            return i;
     }
 
-    return false;
+    return size;
 }
 
-static bool var_is_present(buffer var_table, char* string) 
+static unsigned long search_var(buffer var_table, char* string) 
 { 
     search_in_array((char**) var_table.data, var_table.head, string); 
+}
+
+static void store_var(buffer* table, char* string)
+{
+    char* tmp_ptr = strdup(string);
+    push_data(table, tmp_ptr);
 }
 
 static bool is_correct(char* string)
@@ -55,10 +61,19 @@ static struct statistics init_stat()
     struct statistics stat;
     stat.variable_analyzed = 0;
     stat.variable_unused_list = create_buffer(sizeof(char*));
+    stat.error_list = create_buffer(sizeof(struct error*));
     
-    
+    return stat;
 }
 
+static struct error* create_error(char* lexeme, enum error_type type)
+{
+    struct error* tmp_ptr = (struct error*) malloc(sizeof(struct error));
+    tmp_ptr->lexeme = strdup(lexeme);
+    tmp_ptr->type = type;
+
+    return tmp_ptr;
+}
 
 struct statistics analyze(struct output out)
 {
@@ -69,8 +84,9 @@ struct statistics analyze(struct output out)
     buffer unused_var = create_buffer(sizeof(char*));
 
     unsigned long counter = 0;
-    unsigned long statement_case;
+    enum statement_case stm_case;
     
+    struct statistics stat = init_stat();
 
     for(unsigned long i = 0; i < out.linearization.head; i++)
     {
@@ -82,18 +98,38 @@ struct statistics analyze(struct output out)
 
         if(counter == 0 && is_type(out.type_list, linearization[i]))
         {
-
+            if(!is_correct(linearization[i]))
+            {
+                push_data(&stat.error_list, create_error(linearization[i], TYPE_ERROR));
+            
+            }
+            stm_case = DECLARATION_CASE;
         } 
 
         else if(counter == 0 && !strcmp(linearization[i], "typedef"))
         {
-            statement_case = TYPEDEF_CASE;
+            stm_case = TYPEDEF_CASE;
+
 
         }
         
         else
         {
-
+            if(!is_correct(linearization[i]))
+            {
+                push_data(&stat.error_list, create_error(linearization[i], NAME_ERROR));
+            
+            }
+            stm_case = EXPRESSION_CASE;
+            
+            if(search_var(var_table, linearization[i]) < var_table.head)
+            {
+                remove_data(&unused_var, search_var(unused_var,linearization[i]));
+            }
+            else
+            {
+                store_var(&var_table, linearization[i]);
+            }
         }
         
 
