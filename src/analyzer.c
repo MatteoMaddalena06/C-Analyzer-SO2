@@ -6,6 +6,16 @@
 #include <stdbool.h>
 #include <ctype.h>
 
+/*
+    Cerca una stringa nell'array arr.
+    Input:
+        arr = l'array di stringhe 
+        size = il numero di elementi nell'array
+        string = la stringa 
+        len = la lunghezza della stringa
+    Output:
+        l'indice dove si trova la stringa cercata (se non esiste size)
+*/
 static unsigned long search_in_array_impl(char** arr, size_t size, char* string, size_t len)
 {
     for(unsigned long i = 0; i < size; i++)
@@ -17,12 +27,23 @@ static unsigned long search_in_array_impl(char** arr, size_t size, char* string,
     return size;
 }
 
+
+// wrapper per search_in_array_impl
 static unsigned long search_in_array_range(char** arr, size_t size, char* string, unsigned long start, unsigned long end)
 { return search_in_array_impl(arr, size, string + start, end - start); }
 
+// wrapper per search_in_array_impl
 static unsigned long search_var(buffer table, char* string) 
 { return search_in_array_impl((char**)table.data, table.head, string, strlen(string)); }
 
+/*
+    Memorizza nella la tabella delle variabili una stringa solo se non è presente.
+    Input:
+        var_table = la tabella delle variabili
+        string = la stringa
+    Output:
+        true se la stringa è stata inserita, false altrimenti
+*/
 static bool store_if_not_present(buffer* var_table, char* string)
 {
     if(search_var(*var_table, string) < var_table->head)
@@ -34,6 +55,14 @@ static bool store_if_not_present(buffer* var_table, char* string)
     return true;
 }
 
+/*
+    Elimina nella tabella delle variabili non usate una stringa solo se non è presente.
+    Input:
+        unused_var_list = la tabella delle variabili non usate
+        string = la stringa 
+    Output:
+        true se la stringa è stata rimossa, false altrimenti
+*/
 static bool remove_if_present(buffer* unused_var_list, char* string)
 {
     unsigned long index = search_var(*unused_var_list, string);
@@ -46,6 +75,14 @@ static bool remove_if_present(buffer* unused_var_list, char* string)
     return true;
 }
 
+/*
+    Controlla se una stringa è un valido identificatore C.
+    Input:
+        string = la stringa 
+        var = la modalità di controllo (true se la stringa rappresenta il nome di una variabile)
+    Output:
+        true se la stringa è valida, false altrimenti
+*/
 static bool is_correct(char* string, bool var)
 {
     char* c_keywords[] = {
@@ -107,6 +144,14 @@ static bool is_correct(char* string, bool var)
     return true;
 }
 
+/*  
+    Crea un errore.
+    Input:
+        lexeme = la stringa che causa l'errore
+        type = il tipo di errore 
+    Output:
+        il puntatore all'errore allocato dinamicamente
+*/
 static struct error* create_error(char* lexeme, enum error_type type)
 {
     struct error* tmp_ptr = (struct error*)malloc(sizeof(struct error));
@@ -117,6 +162,15 @@ static struct error* create_error(char* lexeme, enum error_type type)
     return tmp_ptr;
 }
 
+/*
+    Memorizza una stringa nell'array degli errori se non è corretta (secondo i criteri implementati da is_correct)
+    Input:
+        stat = il puntatore alle statistiche 
+        string = la stringa 
+        type = il tipo di errore 
+    Output:
+        true se la stringa viene memorizzata, false altrimenti
+*/
 static bool store_if_not_correct(struct statistics* stat, char* string, enum error_type type)
 {
     if(is_correct(string, type == NAME_ERROR))
@@ -134,7 +188,16 @@ static bool store_if_not_correct(struct statistics* stat, char* string, enum err
     return true;
 }
 
-static bool store_if_error_not_present(struct statistics* stat, char* string, enum error_type type)
+/*
+    Memorizza un errore se non è presente nella lista degli errori.
+    Input:
+        stat = il puntatore alle statistiche
+        string = la stringa 
+        type = il tipo di errore
+    Output:
+        true se l'errore viene memorizzato, false altrimenti
+*/
+static bool store_error_if_not_present(struct statistics* stat, char* string, enum error_type type)
 {
     for(unsigned long i = 0; i < stat->error_list.head; i++)
     {
@@ -150,6 +213,7 @@ static bool store_if_error_not_present(struct statistics* stat, char* string, en
     return true;
 }
 
+//inizializza le statistiche
 static struct statistics init_stat()
 {
     struct statistics stat;
@@ -163,13 +227,20 @@ static struct statistics init_stat()
     return stat;
 }
 
+//i tipi di blocchi (lista di id compresi fra ';')
 enum statement_case {
     DECLARATION_CASE,
     EXPRESSION_CASE,
     TYPEDEF_CASE
 };
 
-
+/*
+    Analizza la linearizzazione.
+    Input:
+        out = l'output prodotto dal linearizzatore
+    Output:
+        le statistiche
+*/
 struct statistics analyze(struct output out)
 {
     struct statistics stat = init_stat();
@@ -202,7 +273,7 @@ struct statistics analyze(struct output out)
         else if(!counter && is_type(out.type_list, linearization[i]))
         {
             if(!is_correct(linearization[i], true))
-                store_if_error_not_present(&stat, linearization[i], TYPE_ERROR);
+                store_error_if_not_present(&stat, linearization[i], TYPE_ERROR);
 
             stm_case = DECLARATION_CASE;
         } 
@@ -252,6 +323,11 @@ struct statistics analyze(struct output out)
     return stat;
 }
 
+/*
+    Dealloca le statistiche.
+    Input:
+        stat = le statistiche
+*/
 void free_stat(struct statistics* stat)
 {
     stat->variable_analyzed = 0;
