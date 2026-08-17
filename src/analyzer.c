@@ -272,7 +272,7 @@ struct statistics analyze(struct output out)
 
         else if(!counter && is_type(out.type_list, linearization[i]))
         {
-            if(!is_correct(linearization[i], true))
+            if(!is_correct(linearization[i], false))
                 store_error_if_not_present(&stat, linearization[i], TYPE_ERROR);
 
             stm_case = DECLARATION_CASE;
