@@ -15,9 +15,11 @@ struct error {
 };
 
 struct statistics {
-    unsigned long int variable_analyzed;
+    unsigned long variable_analyzed;
     buffer variable_unused_list;
     buffer error_list;
+    unsigned long type_error_count;
+    unsigned long name_error_count;
 };
 
 struct statistics analyze(struct output);

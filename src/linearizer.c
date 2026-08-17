@@ -5,6 +5,24 @@
 #include <string.h>
 #include <errno.h>
 
+/*
+    Lista delle ipotesi:
+        1.  il codice è sintatticamente e semanticamente corretto tranne nel nome delle variabili e dei tipi
+        2.  gli identificatori di variabili e tipi non possono iniziare e finire con gli spazi (vegnono considerati spazi separatori) o finire con '*' 
+            (vengono considerati puntatori al tipo).
+        3.  le espressioni sono ben scritte (non possono quindi contenere tipo o variabili mal formattati)
+        4.  le parentesi graffe nelle dichiarazioni non sono ammesse
+        5.  i nomi delle variabili e dei tipi non possono essere composti da '{' o ';'
+        6.  gli usi dei campi dei tipi composti sono ignorati
+        7.  l'operatore ternario non viene gestito
+        8.  sono ignorati costrutti avanzati del linguaggio presenti nelle ultime versioni
+        9.  vengono gestiti solo i tipi interni al file; tutti gli altri vengono trattati come variabili
+        10. le MACRO non sono gestite e perciò vengono considerate variabili
+        11. niente shadowing delle variabili
+        12. non sono ammessi costrutti condizinoali senza parentesi graffe
+        13. niente keyword prima del tipo in una dichirazione (niente static, const, register etc..)
+*/
+
 /* 
     variabili globali per gestire i typedef spezzati.
     Se pending_typedef = true, allora pending_name da considerare
@@ -377,15 +395,17 @@ static unsigned long extract_token_from_start(buffer statement, unsigned long st
     Input:
         statement = lo statement
         end = l'indice (esclusivo) da cui iniziare l'estrazione
+        bool = il criterio di fine token (true se lo spazio termina il token, false se un carattere
+        non alfanumerico diverso da '_' lo termina)
     Output:
         l'indice (inclusivo) di inizio token
 */
-static unsigned long extract_token_from_end(buffer statement, unsigned long end)
+static unsigned long extract_token_from_end(buffer statement, unsigned long end, bool space)
 {
     char* chars = (char*)statement.data;
     unsigned long i;
 
-    for(i = end; i > 0 && (isalnum(chars[i - 1]) || chars[i - 1] == '_'); i--);
+    for(i = end; i > 0 && !space && (isalnum(chars[i - 1]) || chars[i - 1] == '_') || space && chars[i - 1] != ' '; i--);
 
     return i;
 }
@@ -461,7 +481,7 @@ static unsigned long find_type(buffer statement, unsigned long start, unsigned l
 
     while(!is_type_range(output, statement, start, type_end))
     {
-        type_end = extract_token_from_end(statement, type_end);
+        type_end = extract_token_from_end(statement, type_end, true);
 
         if(type_end <= start)
             return start;
@@ -538,7 +558,8 @@ static void analyze_declaration(buffer statement, unsigned long start, unsigned 
     char* tmp_ptr;
     bool type_present = true;
 
-    if(function && subdecl_end - subdecl_start <= 1)
+    if(function && (subdecl_end - subdecl_start <= 1 || \
+        compare(statement, "void", subdecl_start, adjust_index(statement, subdecl_end, false))))
         return;
 
     while(subdecl_end < statement.head)
@@ -785,7 +806,7 @@ static void analyze_bracket_statement(buffer statement, struct output* output)
         return;
     
     unsigned long prebracket_token_start = extract_token_from_end(
-        statement, adjust_index(statement, bracket_pos, false));
+        statement, adjust_index(statement, bracket_pos, false), false);
 
     if(is_condition_token(statement, prebracket_token_start, bracket_pos))
     {
@@ -878,38 +899,3 @@ void free_output(struct output* output)
 
     free_buffer(&output->type_list);
 }
-
-//TEST
-int main(void)
-{
-    FILE* fp = fopen("test.c", "r");
-
-    struct output out = linearize(fp);
-
-    for(int i = 0; i < out.linearization.head; i++)
-        printf("%s\n", ((char**)out.linearization.data)[i]);
-
-    printf("\n");
-
-    for(int i = 0; i < out.type_list.head; i++)
-        printf("%s\n", ((char**)out.type_list.data)[i]);
-
-    free_output(&out);
-}
-
-/*
-    Lista delle ipotesi:
-        1.  il codice è sintatticamente e semanticamente corretto tranne nel nome delle variabili e dei tipi
-        2. gli identificatori di variabili e tipi non possono iniziare e finire con gli spazi (vegnono considerati spazi separatori) o finire con '*' 
-            (vengono considerati puntatori al tipo).
-        3.  le espressioni sono ben scritte (non possono quindi contenere tipo o variabili mal formattati)
-        4.  le parentesi graffe nelle dichiarazioni non sono ammesse
-        5.  i nomi delle variabili e dei tipi non possono essere composti da '{' o ';'
-        6.  gli usi dei campi dei tipi composti sono ignorati
-        7.  l'operatore ternario non viene gestito
-        8.  sono ignorati costrutti avanzati del linguaggio presenti nelle ultime versioni
-        9.  vengono gestiti solo i tipi interni al file; tutti gli altri vengono trattati come variabili
-        10. le MACRO non sono gestite e perciò vengono considerate variabili
-        11. niente shadowing delle variabili
-        12. non sono ammessi costrutti condizinoali senza parentesi graffe
-*/
